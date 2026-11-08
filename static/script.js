@@ -3,6 +3,11 @@ let movementChart = null;
 let pathChart = null;
 let workloadChart = null;
 
+let currentMetrics = {};
+let currentIsDynamic = false;
+let sortKey = null;
+let sortDirection = "asc";
+
 async function runBenchmark() {
     const button = document.getElementById("runButton");
     const error = document.getElementById("error");
@@ -12,6 +17,7 @@ async function runBenchmark() {
     button.textContent = "Running...";
 
     const data = {
+        mode: document.getElementById("mode").value,
         cylinders: Number(document.getElementById("cylinders").value),
         num_requests: Number(document.getElementById("numRequests").value),
         head: Number(document.getElementById("head").value),
@@ -49,6 +55,7 @@ async function runBenchmark() {
 function displayResults(data) {
     const results = data.results;
     const names = Object.keys(results);
+    const isDynamic = data.mode === "dynamic";
 
     document.getElementById("results").style.display = "block";
 
@@ -56,42 +63,79 @@ function displayResults(data) {
         `${data.configuration.num_requests} requests | ` +
         `${data.configuration.cylinders} cylinders | ` +
         `Distribution: ${data.configuration.distribution} | ` +
-        `Seed: ${data.configuration.seed}`;
+        `Mode: ${data.mode} | Seed: ${data.configuration.seed}`;
 
-    document.getElementById("requestList").textContent =
-        data.workload.join(", ");
+    // Display workload.
+    const requestList = document.getElementById("requestList");
 
-    // Populate metrics table.
-    const table = document.getElementById("metricsTable");
-    table.innerHTML = "";
+    if (isDynamic) {
+        requestList.innerHTML = "";
 
-    names.forEach(name => {
-        const metric = results[name];
+        const table = document.createElement("table");
+        table.className = "table table-sm table-bordered mt-2";
 
-        const row = document.createElement("tr");
+        table.innerHTML = `
+            <thead>
+                <tr>
+                    <th>Request ID</th>
+                    <th>Cylinder</th>
+                    <th>Arrival Time</th>
+                </tr>
+            </thead>
+        `;
 
-        [name, metric.total_movement, metric.average_movement]
-            .forEach(value => {
-                const cell = document.createElement("td");
-                cell.textContent = value;
-                row.appendChild(cell);
-            });
+        const tbody = document.createElement("tbody");
 
-        table.appendChild(row);
-    });
+        data.workload.forEach(request => {
+            const row = document.createElement("tr");
 
-    // Destroy old charts before creating new ones.
+            [request.id, request.cylinder, request.arrival_time]
+                .forEach(value => {
+                    const cell = document.createElement("td");
+                    cell.textContent = value;
+                    row.appendChild(cell);
+                });
+
+            tbody.appendChild(row);
+        });
+
+        table.appendChild(tbody);
+        requestList.appendChild(table);
+
+    } else {
+        requestList.textContent = data.workload.join(", ");
+    }
+
+    // Metrics table headers.
+
+    // Metrics table.
+    currentMetrics = results;
+    currentIsDynamic = isDynamic;
+    sortKey = null;
+    sortDirection = "asc";
+
+    renderMetricsTable();
+
+    // Destroy previous charts.
     if (movementChart) movementChart.destroy();
     if (pathChart) pathChart.destroy();
     if (workloadChart) workloadChart.destroy();
 
-    // Generated workload distribution scatter chart.
-    const workloadPoints = data.workload.map(
-        (cylinder, index) => ({
+    // Workload distribution chart.
+    const workloadPoints = isDynamic
+        ? data.workload.map(request => ({
+            x: request.arrival_time,
+            y: request.cylinder
+        }))
+        : data.workload.map((cylinder, index) => ({
             x: index + 1,
             y: cylinder
-        })
-    );
+        }));
+
+    document.getElementById("workloadChartInfo").textContent =
+        isDynamic
+            ? "X-axis: Arrival time. Y-axis: Requested cylinder."
+            : "X-axis: Request arrival order. Y-axis: Requested cylinder.";
 
     workloadChart = new Chart(
         document.getElementById("workloadChart"),
@@ -112,7 +156,7 @@ function displayResults(data) {
                         type: "linear",
                         title: {
                             display: true,
-                            text: "Request Arrival Order"
+                            text: isDynamic ? "Arrival Time" : "Request Order"
                         }
                     },
                     y: {
@@ -128,7 +172,7 @@ function displayResults(data) {
         }
     );
 
-    // Total movement bar chart.
+    // Total movement comparison.
     movementChart = new Chart(
         document.getElementById("movementChart"),
         {
@@ -158,7 +202,7 @@ function displayResults(data) {
         }
     );
 
-    // Head movement path line chart.
+    // Head movement paths.
     const datasets = names.map(name => ({
         label: name,
         data: results[name].head_path.map(
@@ -171,6 +215,11 @@ function displayResults(data) {
         pointRadius: 1,
         tension: 0
     }));
+
+    document.getElementById("pathChartInfo").textContent =
+        isDynamic
+            ? "X-axis: Movement event (not simulated time). Y-axis: Cylinder position."
+            : "X-axis: Movement step. Y-axis: Cylinder position.";
 
     pathChart = new Chart(
         document.getElementById("pathChart"),
@@ -187,7 +236,7 @@ function displayResults(data) {
                         type: "linear",
                         title: {
                             display: true,
-                            text: "Movement Step"
+                            text: "Movement Event"
                         }
                     },
                     y: {
@@ -202,4 +251,126 @@ function displayResults(data) {
             }
         }
     );
+}
+
+function renderMetricsTable() {
+    const metricsHead = document.getElementById("metricsHead");
+    const table = document.getElementById("metricsTable");
+
+    metricsHead.innerHTML = "";
+    table.innerHTML = "";
+
+    const columns = currentIsDynamic
+        ? [
+            { label: "Algorithm", key: "algorithm" },
+            { label: "Total Movement", key: "total_movement" },
+            { label: "Average Movement", key: "average_movement" },
+            { label: "Average Waiting", key: "average_waiting_time" },
+            { label: "Maximum Waiting", key: "maximum_waiting_time" },
+            { label: "Average Response", key: "average_response_time" },
+            { label: "Throughput", key: "throughput" },
+            { label: "Completion Time", key: "total_completion_time" }
+        ]
+        : [
+            { label: "Algorithm", key: "algorithm" },
+            { label: "Total Movement", key: "total_movement" },
+            { label: "Average Movement", key: "average_movement" }
+        ];
+
+    // Create sortable column headings.
+    const headerRow = document.createElement("tr");
+
+    columns.forEach(column => {
+        const th = document.createElement("th");
+        const button = document.createElement("button");
+
+        button.className =
+            "btn btn-link p-0 text-dark text-decoration-none fw-bold";
+        button.style.cursor = "pointer";
+
+        let arrow = "";
+
+        if (sortKey === column.key) {
+            arrow = sortDirection === "asc" ? " ▲" : " ▼";
+        }
+
+        button.textContent = column.label + arrow;
+
+        button.onclick = () => {
+            if (sortKey === column.key) {
+                sortDirection =
+                    sortDirection === "asc" ? "desc" : "asc";
+            } else {
+                sortKey = column.key;
+                sortDirection = "asc";
+            }
+
+            renderMetricsTable();
+        };
+
+        th.appendChild(button);
+        headerRow.appendChild(th);
+    });
+
+    metricsHead.appendChild(headerRow);
+
+    // Prepare rows.
+    let names = Object.keys(currentMetrics);
+
+    // Sort rows when a column is selected.
+    if (sortKey !== null) {
+        names.sort((a, b) => {
+            const valueA = sortKey === "algorithm"
+                ? a
+                : currentMetrics[a][sortKey];
+
+            const valueB = sortKey === "algorithm"
+                ? b
+                : currentMetrics[b][sortKey];
+
+            let comparison;
+
+            if (typeof valueA === "string") {
+                comparison = valueA.localeCompare(valueB);
+            } else {
+                comparison = valueA - valueB;
+            }
+
+            return sortDirection === "asc"
+                ? comparison
+                : -comparison;
+        });
+    }
+
+    // Populate table.
+    names.forEach(name => {
+        const metric = currentMetrics[name];
+
+        const values = currentIsDynamic
+            ? [
+                name,
+                metric.total_movement,
+                metric.average_movement,
+                metric.average_waiting_time,
+                metric.maximum_waiting_time,
+                metric.average_response_time,
+                Number(metric.throughput).toFixed(3),
+                metric.total_completion_time
+            ]
+            : [
+                name,
+                metric.total_movement,
+                metric.average_movement
+            ];
+
+        const row = document.createElement("tr");
+
+        values.forEach(value => {
+            const cell = document.createElement("td");
+            cell.textContent = value;
+            row.appendChild(cell);
+        });
+
+        table.appendChild(row);
+    });
 }

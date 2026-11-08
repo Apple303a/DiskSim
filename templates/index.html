@@ -32,6 +32,14 @@
             <div class="row g-3">
 
                 <div class="col-md-4">
+                    <label class="form-label">Scheduling Mode</label>
+                    <select id="mode" class="form-select">
+                        <option value="batch">Batch Scheduling</option>
+                        <option value="dynamic">Dynamic Scheduling</option>
+                    </select>
+                </div>
+
+                <div class="col-md-4">
                     <label class="form-label">Number of Cylinders</label>
                     <input type="number" id="cylinders"
                            class="form-control" value="200" min="2">
@@ -94,14 +102,10 @@
             </div>
         </div>
 
-        <!-- NEW: Workload Distribution Graph -->
         <div class="card shadow-sm mb-4">
             <div class="card-body">
                 <h4>Generated Workload Distribution</h4>
-                <p class="text-muted small">
-                    X-axis: Request arrival order.
-                    Y-axis: Requested cylinder.
-                </p>
+                <p id="workloadChartInfo" class="text-muted small"></p>
                 <canvas id="workloadChart"></canvas>
             </div>
         </div>
@@ -112,13 +116,7 @@
 
                 <div class="table-responsive">
                     <table class="table table-striped mt-3">
-                        <thead>
-                            <tr>
-                                <th>Algorithm</th>
-                                <th>Total Movement</th>
-                                <th>Average Movement</th>
-                            </tr>
-                        </thead>
+                        <thead id="metricsHead"></thead>
                         <tbody id="metricsTable"></tbody>
                     </table>
                 </div>
@@ -135,9 +133,7 @@
         <div class="card shadow-sm mb-4">
             <div class="card-body">
                 <h4>Head Movement Paths</h4>
-                <p class="text-muted small">
-                    X-axis: movement step. Y-axis: cylinder position.
-                </p>
+                <p id="pathChartInfo" class="text-muted small"></p>
                 <canvas id="pathChart"></canvas>
             </div>
         </div>
